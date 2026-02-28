@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart'; // Ensure this is in your pubspec.yaml
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../models/machine_model.dart'; // Path to the model file we created
+import 'model_insights_section.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,7 +14,64 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Machine? selectedMachine;
+  // toggle between the different right‑hand panels
   bool _viewingHistory = false;
+  bool _viewingModelInsights = false;
+
+  // categorized machines from backend
+  Map<String, List<Machine>> _categorizedMachines = {};
+
+
+  /// new helper: load categorized machines (high/medium/low) for the sidebar
+  Future<void> _loadCategorizedMachines() async {
+    final uri = Uri.parse('http://localhost:8000/machines');
+    final resp = await http.get(uri);
+    if (resp.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(resp.body);
+      setState(() {
+        _categorizedMachines = {
+          'high': (data['high'] as List).map((e) => Machine.fromJson(e)).toList(),
+          'medium': (data['medium'] as List).map((e) => Machine.fromJson(e)).toList(),
+          'low': (data['low'] as List).map((e) => Machine.fromJson(e)).toList(),
+        };
+      });
+    }
+  }
+
+  Future<void> _fetchMachineInsights(int id) async {
+    final uri = Uri.parse('http://localhost:8000/predict/$id');
+    final resp = await http.get(uri);
+    if (resp.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(resp.body);
+      setState(() {
+        // update selectedMachine using returned info
+        if (selectedMachine != null && selectedMachine!.id == id) {
+          // build a copy with any new values
+          // helper to convert any num-like value to double
+          double? toDouble(dynamic v) {
+            if (v == null) return null;
+            if (v is num) return v.toDouble();
+            return double.tryParse(v.toString());
+          }
+
+          selectedMachine = selectedMachine!.copyWith(
+            failureProbability: toDouble(data['probability'] ?? data['prob'] ?? data['failureProbability']),
+            airTemp: toDouble(data['airTemp'] ?? data['Air temperature [K]']),
+            processTemp: toDouble(data['processTemp'] ?? data['Process temperature [K]']),
+            rpm: toDouble(data['rpm'] ?? data['Rotational speed [rpm]']),
+            torque: toDouble(data['torque'] ?? data['Torque [Nm]']),
+            toolWear: toDouble(data['toolWear'] ?? data['Tool wear [min]']),
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategorizedMachines();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +85,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // --- 2. DYNAMIC CONTENT ---
           Expanded(
             child: _viewingHistory
-                ? _buildMaintenanceHistoryView()
+              ? _buildMaintenanceHistoryView()
+              : (_viewingModelInsights
+                ? ModelInsightsSection()
                 : (selectedMachine == null
-                    ? _buildFactoryOverview()
-                    : _buildMachineDetail(selectedMachine!)),
+                  ? _buildFactoryOverview()
+                  : _buildMachineDetail(selectedMachine!))),
           ),
         ],
       ),
@@ -46,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+            padding: EdgeInsets.symmetric(vertical: 20, horizontal: 20),
             child: Row(
               children: [
                 Icon(Icons.bolt, color: Colors.blueAccent, size: 30),
@@ -59,29 +121,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          _sidebarTile("Factory Overview", Icons.grid_view_rounded, isSelected: selectedMachine == null && !_viewingHistory, onTap: () {
+          _sidebarTile("Factory Overview", Icons.grid_view_rounded, isSelected: selectedMachine == null && !_viewingHistory && !_viewingModelInsights, onTap: () {
             setState(() {
               selectedMachine = null;
               _viewingHistory = false;
+              _viewingModelInsights = false;
             });
           }),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
           _sidebarTile("Maintenance & ROI", Icons.history_edu_rounded, isSelected: _viewingHistory, onTap: () {
             setState(() {
               _viewingHistory = true;
               selectedMachine = null;
+              _viewingModelInsights = false;
             });
           }),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+          _sidebarTile("Model Insights", Icons.insights_rounded, isSelected: _viewingModelInsights, onTap: () {
+            setState(() {
+              _viewingModelInsights = true;
+              selectedMachine = null;
+              _viewingHistory = false;
+            });
+          }),
+          const SizedBox(height: 16),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text("MACHINES", style: TextStyle(color: Colors.white24, fontSize: 11, letterSpacing: 1.5))),
+                child: Text("VIRTUAL MACHINES", style: TextStyle(color: Colors.white24, fontSize: 11, letterSpacing: 1.5))),
           ),
-          const SizedBox(height: 10),
-          ...dummyMachines.map((m) => _sidebarMachineTile(m)).toList(),
-          const Spacer(),
+          const SizedBox(height: 8),
+          // load machines from backend (categorized)
+          Expanded(child: _buildVirtualMachineList()),
           const Divider(color: Colors.white10, height: 1),
           const ListTile(
             leading: CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person, color: Colors.white54)),
@@ -101,30 +173,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           _buildDetailHeader(machine),
           const SizedBox(height: 30),
-
-          // Predictive Alert Card (Changes based on Machine 1, 2, or 3)
-          _buildPredictiveAlertCard(machine),
-          const SizedBox(height: 30),
-
-          // Core Stats Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Graph Section
-              Expanded(flex: 3, child: _buildPerformanceCard(machine)),
-              const SizedBox(width: 20),
-              // Sensor Grid Section
-              Expanded(flex: 2, child: _buildSensorGrid(machine)),
-            ],
-          ),
-          const SizedBox(height: 30),
-
-          // Feature Importance (XAI)
-          _buildFeatureImportance(machine),
+          _buildMachinePredictiveDetail(machine),
         ],
+      ),
+    );
+  }
+
+  // predictive detail layout borrowed from analysis
+  Widget _buildMachinePredictiveDetail(Machine machine) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Prediction Hero Section
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _buildPredictionGauge(machine.failureProbability, machine),
+            const SizedBox(width: 40),
+            Expanded(child: _buildPredictiveAlertCard(machine)),
+          ],
+        ),
+        const SizedBox(height: 40),
+
+        // 2. Technical Specs Grid
+        const Text("DIAGNOSTIC TELEMETRY", style: TextStyle(color: Colors.white24, fontSize: 12, letterSpacing: 1.2)),
+        const SizedBox(height: 16),
+        GridView.count(
+          shrinkWrap: true,
+          crossAxisCount: 3,
+          childAspectRatio: 2.5,
+          crossAxisSpacing: 15,
+          mainAxisSpacing: 15,
+          children: [
+            _sensorTile("Power Load", "${machine.powerEstimate.toStringAsFixed(0)}", Icons.bolt),
+            _sensorTile("Temp Delta", "${machine.tempDifference.toStringAsFixed(1)} K", Icons.thermostat),
+            _sensorTile("Tool Wear", "${machine.toolWear} min", Icons.build_circle),
+            _sensorTile("Speed", "${machine.rpm} RPM", Icons.speed),
+            _sensorTile("Torque", "${machine.torque} Nm", Icons.settings_input_component),
+            _sensorTile("Process Temp", "${machine.processTemp} K", Icons.device_thermostat),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPredictiveAlertCard(Machine machine) {
+    String message;
+    if (machine.failureProbability >= 0.13) {
+      message = '⚠️ HIGH RISK - schedule maintenance within 24 hrs.';
+    } else if (machine.failureProbability >= 0.05) {
+      message = '🟠 ADVISORY - monitor and plan inspection soon.';
+    } else {
+      message = '✅ STABLE - operating within normal bounds.';
+    }
+    return Container(
+      height: 130,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Align(
+        alignment: Alignment.center,
+        child: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 14)),
       ),
     );
   }
@@ -148,123 +262,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildPredictiveAlertCard(Machine machine) {
-    // Logic for Machine 1 (Red), 2 (Yellow), 3 (Green)
-    String title = "SYSTEM NOMINAL";
-    String desc = "Machine is operating within expected parameters. No issues detected.";
-    IconData icon = Icons.check_circle;
 
-    if (machine.failureProbability > 0.8) {
-      title = "CRITICAL FAILURE IMMINENT";
-      desc = "Model identifies 90%+ probability of Tool Wear Failure (TWF). Immediate maintenance recommended.";
-      icon = Icons.report_problem;
-    } else if (machine.failureProbability > 0.3) {
-      title = "MAINTENANCE ADVISORY";
-      desc = "Warning: Abnormal Thermal Delta detected. Probability of Overstrain (OSF) is rising.";
-      icon = Icons.warning_amber_rounded;
-    }
 
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: machine.statusColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: machine.statusColor.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+
+
+  // --- SUB-WIDGETS ---
+
+  Widget _buildPredictionGauge(double probability, Machine machine) {
+    // circular gauge with probability and a small table of raw inputs
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Failure Probability", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Center(
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Icon(icon, color: machine.statusColor),
-              const SizedBox(width: 12),
-              Text(title, style: TextStyle(color: machine.statusColor, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+              SizedBox(
+                height: 120,
+                width: 120,
+                child: CircularProgressIndicator(
+                  value: probability,
+                  strokeWidth: 12,
+                  color: probability > 0.8
+                      ? Colors.redAccent
+                      : (probability > 0.3 ? Colors.orangeAccent : Colors.greenAccent),
+                  backgroundColor: Colors.white10,
+                  strokeCap: StrokeCap.round,
+                ),
+              ),
+              Text("${(probability * 100).toStringAsFixed(1)}%",
+                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: machine.failureProbability,
-              backgroundColor: Colors.white10,
-              color: machine.statusColor,
-              minHeight: 10,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(desc, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPerformanceCard(Machine machine) {
-    return Container(
-      height: 350,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: const Color(0xFF161618), borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Health Trend (30 Days)", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              LineChartData(
-                gridData: const FlGridData(show: false),
-                titlesData: const FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: machine.monthlyPerformance.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
-                    isCurved: true,
-                    color: machine.statusColor,
-                    barWidth: 4,
-                    belowBarData: BarAreaData(show: true, color: machine.statusColor.withOpacity(0.1)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSensorGrid(Machine machine) {
-    return Column(
-      children: [
-        _sensorTile("Torque", "${machine.torque} Nm", Icons.settings_input_component),
-        const SizedBox(height: 15),
-        _sensorTile("Speed", "${machine.rpm} RPM", Icons.speed),
-        const SizedBox(height: 15),
-        _sensorTile("Tool Wear", "${machine.toolWear} min", Icons.build_circle_outlined),
-        const SizedBox(height: 15),
-        _sensorTile("Power Est.", "${machine.powerEstimate} kW", Icons.bolt),
+        ),
+        const SizedBox(height: 16),
+        // display a few raw input columns returned by the API
+        Wrap(
+          spacing: 20,
+          runSpacing: 12,
+          children: [
+            _sensorTile("Air Temp", "${(machine.airTemp - 273.15).toStringAsFixed(1)}°C", Icons.thermostat),
+            _sensorTile("Process Temp", "${(machine.processTemp - 273.15).toStringAsFixed(1)}°C", Icons.device_thermostat),
+            _sensorTile("RPM", "${machine.rpm.toStringAsFixed(0)}", Icons.speed),
+            _sensorTile("Torque", "${machine.torque.toStringAsFixed(1)}", Icons.settings_input_component),
+          ],
+        ),
       ],
     );
   }
-
-  Widget _buildFeatureImportance(Machine machine) {
-    // Mocking the 'Feature Importance' chart from your notebook
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: const Color(0xFF161618), borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("FAILURE DRIVERS (LightGBM)", style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          _importanceBar("Tool Wear Interaction", 0.72, machine.statusColor),
-          _importanceBar("Temp Difference", 0.45, machine.statusColor),
-          _importanceBar("Torque / RPM Ratio", 0.28, machine.statusColor),
-        ],
-      ),
-    );
-  }
-
-  // --- SUB-WIDGETS ---
 
   Widget _sidebarTile(String title, IconData icon, {required bool isSelected, required VoidCallback onTap}) {
     return ListTile(
@@ -277,16 +324,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _sidebarMachineTile(Machine m) {
     bool isSelected = selectedMachine?.id == m.id;
+
     return ListTile(
-      onTap: () => setState(() {
-        selectedMachine = m;
-        _viewingHistory = false;
-      }),
-      leading: Icon(Icons.circle, color: m.statusColor, size: 10),
-      title: Text(m.name, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontSize: 14)),
-      trailing: Text("${(m.failureProbability * 100).toInt()}%", style: const TextStyle(color: Colors.white24, fontSize: 11)),
+      onTap: () {
+        setState(() {
+          selectedMachine = m;
+          _viewingHistory = false;
+          _viewingModelInsights = false;
+        });
+        // fetch live prediction once a machine is selected
+        _fetchMachineInsights(m.id);
+      },
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.circle, color: m.statusColor, size: 10),
+        ],
+      ),
+      title: Text(m.name, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontSize: 14, fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
+      subtitle: Text(m.type, style: const TextStyle(color: Colors.white24, fontSize: 12)),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text("${(m.failureProbability * 100).toStringAsFixed(1)}%", style: const TextStyle(color: Colors.white24, fontSize: 12)),
+        ],
+      ),
       selected: isSelected,
       selectedTileColor: Colors.white.withOpacity(0.03),
+    );
+  }
+
+  // helper for sidebar categories
+  Widget _buildCategoryHeader(String label, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      child: Text(label, style: TextStyle(color: color.withOpacity(0.6), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+    );
+  }
+
+  Widget _buildVirtualMachineList() {
+    // grouped list view with optional headers
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        if (_categorizedMachines['high']?.isNotEmpty ?? false)
+          _buildCategoryHeader("HIGH RISK (≥13%)", Colors.redAccent),
+        ...(_categorizedMachines['high'] ?? []).map((m) => _sidebarMachineTile(m)),
+
+        if (_categorizedMachines['medium']?.isNotEmpty ?? false)
+          _buildCategoryHeader("ADVISORY (5-13%)", Colors.orangeAccent),
+        ...(_categorizedMachines['medium'] ?? []).map((m) => _sidebarMachineTile(m)),
+
+        if (_categorizedMachines['low']?.isNotEmpty ?? false)
+          _buildCategoryHeader("STABLE (<5%)", Colors.greenAccent),
+        ...(_categorizedMachines['low'] ?? []).map((m) => _sidebarMachineTile(m)),
+      ],
     );
   }
 
@@ -307,22 +401,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _importanceBar(String label, double val, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            Text("${(val * 100).toInt()}%", style: const TextStyle(color: Colors.white24, fontSize: 11)),
-          ]),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: val, color: color, backgroundColor: Colors.white10, minHeight: 4),
-        ],
-      ),
-    );
-  }
 
   Widget _buildActionButtons(Color machineColor) {
     return Row(

@@ -47,3 +47,13 @@ class MaintainXApp extends StatelessWidget {
     );
   }
 }
+
+// Backwards compatibility for tests expecting `MyApp`
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaintainXApp();
+  }
+}
