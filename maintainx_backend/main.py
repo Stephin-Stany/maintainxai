@@ -286,3 +286,113 @@ def failure_drivers():
     for feat, score in corrs.head(8).items():
         drivers.append({"feature": feat, "corr": float(score)})
     return {"target": target, "drivers": drivers}
+
+#for dynamic dashboard metrics, we can simulate some aggregate stats based on the dataset and model predictions
+@app.get("/dashboard/overview")
+def get_factory_overview():
+
+    df["Machine failure"] = (
+        df["TWF"] + df["HDF"] + df["PWF"] + df["OSF"] + df["RNF"]
+    )
+
+    df["Machine failure"] = df["Machine failure"].apply(lambda x: 1 if x > 0 else 0)
+
+    total_records = len(df)
+    total_failures = int(df["Machine failure"].sum())
+    total_output = int(df["Rotational speed [rpm]"].sum())
+    prevented_downtime = float(total_failures * 2)
+    total_savings = float(total_failures * 5000)
+
+    availability = 1 - (total_failures / total_records)
+    performance = df["Rotational speed [rpm]"].mean() / df["Rotational speed [rpm]"].max()
+    quality = 1 - (df["Tool wear [min]"].mean() / df["Tool wear [min]"].max())
+
+    # 🔥 ADD THIS SECTION
+    df["batch"] = df.index // 100
+
+    weekly_data = (
+        df.groupby("batch")["Rotational speed [rpm]"]
+        .sum()
+        .head(7)
+        .reset_index()
+    )
+
+    weekly_production = weekly_data.to_dict(orient="records")
+
+    return {
+        "total_output": total_output,
+        "total_savings": total_savings,
+        "prevented_downtime": prevented_downtime,
+        "oee": {
+            "availability": round(availability * 100, 2),
+            "performance": round(performance * 100, 2),
+            "quality": round(quality * 100, 2),
+        },
+        "weekly_production": weekly_production   # 🔥 IMPORTANT
+    }
+# For the maintenance dashboard, we can simulate some insights based on the failure labels and features in the dataset.
+@app.get("/dashboard/maintenance")
+def get_maintenance_dashboard():
+
+    # Create Machine Failure column
+    df["Machine failure"] = (
+        df["TWF"] + df["HDF"] + df["PWF"] + df["OSF"] + df["RNF"]
+    )
+
+    df["Machine failure"] = df["Machine failure"].apply(lambda x: 1 if x > 0 else 0)
+
+    total_failures = int(df["Machine failure"].sum())
+
+    total_savings = float(total_failures * 5000)
+
+    # MTBF Approximation
+    total_hours = len(df)
+    mtbf = total_hours / (total_failures + 1)
+
+    # Savings Trend (Grouped Artificially)
+    df["batch"] = df.index // 100
+
+    savings_trend = (
+        df.groupby("batch")["Machine failure"]
+        .sum()
+        .cumsum()
+        .reset_index()
+    )
+
+    savings_trend["Machine failure"] *= 5000
+
+    savings_trend = savings_trend.to_dict(orient="records")
+
+    # Recent Interventions (last 5 failures)
+    recent_failures = df[df["Machine failure"] == 1].tail(5)
+
+    recent_list = []
+
+    for _, row in recent_failures.iterrows():
+
+        driver = "Unknown"
+
+        if row["TWF"] == 1:
+            driver = "Tool Wear Failure"
+        elif row["HDF"] == 1:
+            driver = "Heat Dissipation Failure"
+        elif row["PWF"] == 1:
+            driver = "Power Failure"
+        elif row["OSF"] == 1:
+            driver = "Overstrain Failure"
+        elif row["RNF"] == 1:
+            driver = "Random Failure"
+
+        recent_list.append({
+            "machine_id": row["id"],
+            "failure_driver": driver,
+            "net_loss_avoided": 5000
+        })
+
+    return {
+        "total_savings": total_savings,
+        "failures_prevented": total_failures,
+        "mtbf_improvement": round(mtbf, 2),
+        "savings_trend": savings_trend,
+        "recent_interventions": recent_list
+    }

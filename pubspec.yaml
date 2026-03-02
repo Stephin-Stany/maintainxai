@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
 
   http: ^1.1.0
+  intl: ^0.18.1
   # The primary library for the performance and health trend graphs
   fl_chart: ^0.70.0
 

@@ -1,9 +1,13 @@
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart'; // Ensure this is in your pubspec.yaml
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../models/machine_model.dart'; // Path to the model file we created
 import 'model_insights_section.dart';
+import '../../services/api_service.dart';
+import 'package:intl/intl.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -13,6 +17,12 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+Map<String, dynamic>? overviewData;
+bool isLoading = true;
+Map<String, dynamic>? maintenanceData;
+bool isMaintenanceLoading = true;
+
+final formatter = NumberFormat.compact();
   Machine? selectedMachine;
   // toggle between the different right‑hand panels
   bool _viewingHistory = false;
@@ -67,14 +77,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCategorizedMachines();
-  }
+@override
+void initState() {
+  super.initState();
+  loadOverview();
+  loadMaintenance();
+}
 
+void loadOverview() async {
+  try {
+    final data = await ApiService.getOverview();
+    print(data); // temporary debug
+    setState(() {
+      overviewData = data;
+      isLoading = false;
+    });
+  } catch (e) {
+    print("Error loading overview: $e");
+  }
+}
+
+void loadMaintenance() async {
+  try {
+    final data = await ApiService.getMaintenance();
+    setState(() {
+      maintenanceData = data;
+    });
+  } catch (e) {
+    print(e);
+  }
+}
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+  return const Scaffold(
+    body: Center(child: CircularProgressIndicator()),
+  );
+  }
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
       body: Row(
@@ -87,7 +126,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _viewingHistory
               ? _buildMaintenanceHistoryView()
               : (_viewingModelInsights
-                ? ModelInsightsSection()
+                ? const ModelInsightsSection()
                 : (selectedMachine == null
                   ? _buildFactoryOverview()
                   : _buildMachineDetail(selectedMachine!))),
@@ -207,7 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisSpacing: 15,
           mainAxisSpacing: 15,
           children: [
-            _sensorTile("Power Load", "${machine.powerEstimate.toStringAsFixed(0)}", Icons.bolt),
+            _sensorTile("Power Load", machine.powerEstimate.toStringAsFixed(0), Icons.bolt),
             _sensorTile("Temp Delta", "${machine.tempDifference.toStringAsFixed(1)} K", Icons.thermostat),
             _sensorTile("Tool Wear", "${machine.toolWear} min", Icons.build_circle),
             _sensorTile("Speed", "${machine.rpm} RPM", Icons.speed),
@@ -305,8 +344,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             _sensorTile("Air Temp", "${(machine.airTemp - 273.15).toStringAsFixed(1)}°C", Icons.thermostat),
             _sensorTile("Process Temp", "${(machine.processTemp - 273.15).toStringAsFixed(1)}°C", Icons.device_thermostat),
-            _sensorTile("RPM", "${machine.rpm.toStringAsFixed(0)}", Icons.speed),
-            _sensorTile("Torque", "${machine.torque.toStringAsFixed(1)}", Icons.settings_input_component),
+            _sensorTile("RPM", machine.rpm.toStringAsFixed(0), Icons.speed),
+            _sensorTile("Torque", machine.torque.toStringAsFixed(1), Icons.settings_input_component),
           ],
         ),
       ],
@@ -442,14 +481,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           // --- 1. Top Metrics Row (ROI Focused) ---
           Row(
-            children: [
-              _buildOverviewStatCard("Total Output (Units)", "128,490", Icons.inventory_2_outlined, Colors.blueAccent),
-              const SizedBox(width: 20),
-              _buildOverviewStatCard("Estimated ROI", "₹35,27,500", Icons.trending_up, Colors.greenAccent),
-              const SizedBox(width: 20),
-              _buildOverviewStatCard("Prevented Downtime", "18.5 hrs", Icons.verified_user_outlined, Colors.orangeAccent),
-            ],
+             children: [
+                      Expanded(
+                        child: _buildOverviewStatCard(
+                        "Total Output",
+                           formatter.format(overviewData?["total_output"] ?? 0),
+                              Icons.precision_manufacturing,
+                             Colors.blue,
+                    ),
+                 ),
+                const SizedBox(width: 16),
+
+               Expanded(
+                          child: _buildOverviewStatCard(
+              "Savings",
+              "₹${formatter.format(overviewData?["total_savings"] ?? 0)}",
+              Icons.currency_rupee,
+              Colors.green,
+            ),
+            ),
+        const SizedBox(width: 16),
+
+        Expanded(
+            child: _buildOverviewStatCard(
+              "Downtime Prevented",
+              "${overviewData?["prevented_downtime"] ?? 0} hrs",
+              Icons.timer,
+              Colors.orange,
+            ),
           ),
+           ],
+       ),
+       
           const SizedBox(height: 32),
 
           // --- 2. OEE Gauges Section ---
@@ -523,7 +586,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+
+
+
   Widget _buildCapacityChartSection() {
+    print("Overview Data: $overviewData");
+    if (overviewData == null) {
+  return const SizedBox();
+    }
+    List weekly = overviewData?["weekly_production"] ?? [];
+    List<double> rawValues = weekly
+      .map((item) =>
+          (item["Rotational speed [rpm]"] as num).toDouble())
+      .toList();
+
+  double maxRaw = rawValues.isNotEmpty
+      ? rawValues.reduce((a, b) => a > b ? a : b)
+      : 1;
+
+  List<double> normalizedValues =
+      rawValues.map((val) => (val / maxRaw) * 20).toList();
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -547,33 +630,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: 20,
-                barTouchData: BarTouchData(enabled: true),
-                titlesData: FlTitlesData(
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (val, meta) {
-                        const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-                        return Text(days[val.toInt()], style: const TextStyle(color: Colors.white38, fontSize: 12));
-                      },
-                    ),
-                  ),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                gridData: const FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                barGroups: [
-                  _makeBarGroup(0, 12, Colors.blueAccent),
-                  _makeBarGroup(1, 15, Colors.blueAccent),
-                  _makeBarGroup(2, 18, Colors.blueAccent),
-                  _makeBarGroup(3, 14, Colors.blueAccent),
-                  _makeBarGroup(4, 9, Colors.orangeAccent),
-                  _makeBarGroup(5, 16, Colors.blueAccent),
-                  _makeBarGroup(6, 17, Colors.blueAccent),
-                ],
+                maxY: 40,
+                 barGroups: List.generate(
+                normalizedValues.length,
+                (index) {
+                  double value = normalizedValues[index];
+
+                  return _makeBarGroup(
+                    index,
+                    value,
+                    value < 8
+                        ? Colors.orangeAccent
+                        : Colors.blueAccent,
+                         );
+                },
+              ),
               ),
             ),
           ),
@@ -597,27 +668,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildOverviewStatCard(String label, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF161618),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+  Widget _buildOverviewStatCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+) {
+  return Container(   // ✅ REMOVE Expanded
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: const Color(0xFF161618),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.white.withOpacity(0.05)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 20),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 20),
-            Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(label, style: const TextStyle(color: Colors.white38, fontSize: 13)),
-          ],
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 13,
+          ),
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 
   Widget _buildLiveSystemLogs() {
     final List<Map<String, String>> logs = [
@@ -676,12 +763,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // --- ROI Breakdown Cards ---
           Row(
             children: [
-              _buildROICard("Net Savings", "₹35,27,500", "+12% vs last month", Colors.greenAccent),
-              const SizedBox(width: 20),
-              _buildROICard("Failures Prevented", "24", "LightGBM Accuracy: 99%", Colors.blueAccent),
-              const SizedBox(width: 20),
-              _buildROICard("MTBF Improvement", "+18hrs", "Mean Time Between Failures", Colors.orangeAccent),
-            ],
+              _buildROICard(
+  "Net Savings",
+  "₹${formatter.format(maintenanceData?["total_savings"] ?? 0)}",
+  "+AI Optimized",
+  Colors.greenAccent,
+),
+              _buildROICard(
+  "Failures Prevented",
+  "${maintenanceData?["failures_prevented"] ?? 0}",
+  "Model Accuracy Alerts",
+  Colors.blueAccent,
+),
+              _buildROICard(
+  "MTBF Improvement",
+  "${maintenanceData?["mtbf_improvement"] ?? 0} hrs",
+  "Mean Time Between Failures",
+  Colors.orangeAccent,
+),]
           ),
           const SizedBox(height: 40),
 
@@ -718,28 +817,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildROICard(String label, String value, String sub, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF161618),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.1)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
-            const SizedBox(height: 12),
-            Text(sub, style: const TextStyle(color: Colors.white24, fontSize: 11)),
-          ],
-        ),
-      ),
-    );
-  }
+ 
 
   Widget _buildInterventionList() {
     final events = [
@@ -777,7 +855,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 )
               ],
             ),
-          )).toList(),
+          )),
         ],
       ),
     );
@@ -821,3 +899,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+ Widget _buildROICard(String label, String value, String sub, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161618),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.1)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
+            const SizedBox(height: 12),
+            Text(sub, style: const TextStyle(color: Colors.white24, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
