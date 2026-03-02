@@ -22,7 +22,8 @@ bool isLoading = true;
 Map<String, dynamic>? maintenanceData;
 bool isMaintenanceLoading = true;
 
-final formatter = NumberFormat.compact();
+// use compact format with Indian numbering (lakhs/crores) for large values
+final formatter = NumberFormat.compact(locale: 'en_IN');
   Machine? selectedMachine;
   // toggle between the different right‑hand panels
   bool _viewingHistory = false;
@@ -82,6 +83,8 @@ void initState() {
   super.initState();
   loadOverview();
   loadMaintenance();
+  // fetch list of virtual machines for sidebar
+  _loadCategorizedMachines();
 }
 
 void loadOverview() async {
@@ -234,6 +237,10 @@ void loadMaintenance() async {
             Expanded(child: _buildPredictiveAlertCard(machine)),
           ],
         ),
+        const SizedBox(height: 24),
+
+        // supplemental input values that were previously inside the gauge
+        _buildGaugeInputs(machine),
         const SizedBox(height: 40),
 
         // 2. Technical Specs Grid
@@ -308,46 +315,55 @@ void loadMaintenance() async {
   // --- SUB-WIDGETS ---
 
   Widget _buildPredictionGauge(double probability, Machine machine) {
-    // circular gauge with probability and a small table of raw inputs
+    // circular gauge with probability – heading and circle are centered
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Text("Failure Probability", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Center(
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                height: 120,
-                width: 120,
-                child: CircularProgressIndicator(
-                  value: probability,
-                  strokeWidth: 12,
-                  color: probability > 0.8
-                      ? Colors.redAccent
-                      : (probability > 0.3 ? Colors.orangeAccent : Colors.greenAccent),
-                  backgroundColor: Colors.white10,
-                  strokeCap: StrokeCap.round,
-                ),
-              ),
-              Text("${(probability * 100).toStringAsFixed(1)}%",
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            ],
-          ),
+        const Text(
+          "Failure Probability",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 16),
-        // display a few raw input columns returned by the API
-        Wrap(
-          spacing: 20,
-          runSpacing: 12,
+        const SizedBox(height: 8),
+        Stack(
+          alignment: Alignment.center,
           children: [
-            _sensorTile("Air Temp", "${(machine.airTemp - 273.15).toStringAsFixed(1)}°C", Icons.thermostat),
-            _sensorTile("Process Temp", "${(machine.processTemp - 273.15).toStringAsFixed(1)}°C", Icons.device_thermostat),
-            _sensorTile("RPM", machine.rpm.toStringAsFixed(0), Icons.speed),
-            _sensorTile("Torque", machine.torque.toStringAsFixed(1), Icons.settings_input_component),
+            SizedBox(
+              height: 120,
+              width: 120,
+              child: CircularProgressIndicator(
+                value: probability,
+                strokeWidth: 12,
+                color: probability > 0.8
+                    ? Colors.redAccent
+                    : (probability > 0.3 ? Colors.orangeAccent : Colors.greenAccent),
+                backgroundColor: Colors.white10,
+                strokeCap: StrokeCap.round,
+              ),
+            ),
+            Text(
+              "${(probability * 100).toStringAsFixed(1)}%",
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
+      ],
+    );
+  }
+
+  // helper to show a small set of raw telemetry values underneath the gauge
+  Widget _buildGaugeInputs(Machine machine) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 20,
+      runSpacing: 12,
+      children: [
+        _sensorTile("Air Temp", "${(machine.airTemp - 273.15).toStringAsFixed(1)}°C", Icons.thermostat),
+        _sensorTile("Process Temp", "${(machine.processTemp - 273.15).toStringAsFixed(1)}°C", Icons.device_thermostat),
+        _sensorTile("RPM", machine.rpm.toStringAsFixed(0), Icons.speed),
+        _sensorTile("Torque", machine.torque.toStringAsFixed(1), Icons.settings_input_component),
       ],
     );
   }
@@ -771,13 +787,13 @@ void loadMaintenance() async {
 ),
               _buildROICard(
   "Failures Prevented",
-  "${maintenanceData?["failures_prevented"] ?? 0}",
+  "${formatter.format(maintenanceData?["failures_prevented"] ?? 0)}",
   "Model Accuracy Alerts",
   Colors.blueAccent,
 ),
               _buildROICard(
   "MTBF Improvement",
-  "${maintenanceData?["mtbf_improvement"] ?? 0} hrs",
+  "${formatter.format(maintenanceData?["mtbf_improvement"] ?? 0)} hrs",
   "Mean Time Between Failures",
   Colors.orangeAccent,
 ),]
