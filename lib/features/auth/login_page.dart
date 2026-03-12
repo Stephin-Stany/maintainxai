@@ -22,19 +22,17 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = true;
     });
 
-    // Simulate a network delay for "calculating/authenticating" feel
+    // Simulate authentication delay
     await Future.delayed(const Duration(seconds: 2));
 
-    if (_emailController.text == _dummyUser && _passwordController.text == _dummyPass) {
+    if (_emailController.text == _dummyUser &&
+        _passwordController.text == _dummyPass) {
       if (!mounted) return;
 
-      debugPrint("Login Successful");
-
-      // Show success SnackBar then navigate to dashboard route
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Authentication Successful. Welcome, Technician."),
-          backgroundColor: Colors.green,
+          content: Text("SYSTEM ACCESS GRANTED: Initializing Dashboard..."),
+          backgroundColor: Color(0xFF2E7D32), // Industrial Green
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -43,11 +41,8 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
 
-      // Small delay so the SnackBar is visible before navigation
       await Future.delayed(const Duration(milliseconds: 400));
       if (!mounted) return;
-
-      // Use named route defined in main.dart
       Navigator.pushReplacementNamed(context, '/dashboard');
     } else {
       if (!mounted) return;
@@ -55,19 +50,17 @@ class _LoginPageState extends State<LoginPage> {
         _isLoading = false;
       });
 
-      // Industrial Warning Style Error
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
+        const SnackBar(
+          content: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white),
+              Icon(Icons.report_problem_rounded, color: Colors.white, size: 18),
               SizedBox(width: 10),
-              Text("Invalid Technician Credentials"),
+              Text("ACCESS DENIED: Invalid Credentials"),
             ],
           ),
-          backgroundColor: Colors.redAccent,
+          backgroundColor: Color(0xFFC62828), // Industrial Red
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -76,124 +69,180 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF121212), // Deep Charcoal
-              Color(0xFF1E1E2E), // Subtle Navy Tint
-            ],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo with Pulse effect feel
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.blueAccent.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
-                    ),
-                    child: const Icon(
-                      Icons.precision_manufacturing_rounded,
-                      size: 60,
-                      color: Colors.blueAccent,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  const Text(
-                    "MaintainX AI",
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const Text(
-                    "Predictive Maintenance Suite",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white54,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 50),
-
-                  // Login Form
-                  _buildTextField(
-                    controller: _emailController,
-                    hint: "Technician ID: admin@maintainx.ai",
-                    icon: Icons.person_outline,
-                  ),
-                  const SizedBox(height: 15),
-                  _buildTextField(
-                    controller: _passwordController,
-                    hint: "Password: factory2026",
-                    icon: Icons.lock_outline,
-                    isObscure: true,
-                  ),
-                  
-                  const SizedBox(height: 30),
-
-                  // Login Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.blueAccent.withOpacity(0.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: _isLoading 
-                        ? const SizedBox(
-                            height: 20, 
-                            width: 20, 
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                          )
-                        : const Text(
-                            "AUTHENTICATE",
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Biometric Quick Login
-                  Opacity(
-                    opacity: 0.4,
-                    child: Column(
-                      children: [
-                        const Icon(Icons.fingerprint, size: 50, color: Colors.white),
-                        const SizedBox(height: 10),
-                        const Text(
-                          "Biometric System Ready",
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+      backgroundColor: const Color(0xFF0A0A0C), // Deep background matching dashboard
+      body: Stack(
+        children: [
+          // Background Grid Overlay (blueprint/technical aesthetic)
+          Opacity(
+            opacity: 0.03,
+            child: GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 12,
+              ),
+              itemBuilder: (context, index) => Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 0.5),
+                ),
               ),
             ),
           ),
+          Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: 420,
+                padding: const EdgeInsets.all(48),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161618), // Card color used in dashboard
+                  borderRadius: BorderRadius.circular(4), // Sharp corners for industrial look
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 30,
+                      offset: const Offset(0, 15),
+                    )
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // System Brand Header
+                    Row(
+                      children: [
+                        const Icon(Icons.bolt_rounded,
+                            color: Colors.blueAccent, size: 32),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "MAINTAINX AI",
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            Text(
+                              "PREDICTIVE OPERATOR TERMINAL",
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.blueAccent.withOpacity(0.8),
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 48),
+                    const Text(
+                      "System Login",
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Authorization required for fleet telemetry access.",
+                      style: TextStyle(fontSize: 13, color: Colors.white38),
+                    ),
+                    const SizedBox(height: 40),
+
+                    // Inputs with Uppercase Labels
+                    _buildLabel("TECHNICIAN ID"),
+                    _buildTextField(
+                      controller: _emailController,
+                      hint: "admin@maintainx.ai",
+                      icon: Icons.badge_outlined,
+                    ),
+                    const SizedBox(height: 24),
+                    _buildLabel("ACCESS KEY"),
+                    _buildTextField(
+                      controller: _passwordController,
+                      hint: "••••••••",
+                      icon: Icons.lock_outline,
+                      isObscure: true,
+                    ),
+                    const SizedBox(height: 48),
+
+                    // Authenticate Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.white10,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2))
+                            : const Text(
+                                "INITIALIZE SESSION",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    
+                    // Security Footer
+                    const Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shield_outlined, size: 12, color: Colors.white10),
+                          SizedBox(width: 8),
+                          const Text(
+                            "ENCRYPTED NODE: CONNECTION SECURE",
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.white10,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10.0),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white54,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.5,
         ),
       ),
     );
@@ -207,20 +256,21 @@ class _LoginPageState extends State<LoginPage> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: TextField(
         controller: controller,
         obscureText: isObscure,
-        style: const TextStyle(color: Colors.white),
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        cursorColor: Colors.blueAccent,
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
-          prefixIcon: Icon(icon, color: Colors.blueAccent, size: 22),
-          contentPadding: const EdgeInsets.symmetric(vertical: 18),
+          hintStyle: const TextStyle(color: Colors.white10, fontSize: 14),
+          prefixIcon: Icon(icon, color: Colors.white24, size: 18),
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
       ),
     );

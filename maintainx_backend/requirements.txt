@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 joblib
-lightgbm
 pandas
 numpy
+lightgbm
+python-multipart
